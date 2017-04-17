@@ -7,7 +7,9 @@ import android.os.Bundle;
 import android.view.View;
 import android.widget.ArrayAdapter;
 import android.widget.Button;
+import android.widget.EditText;
 import android.widget.ListView;
+import android.widget.TextView;
 
 import com.microsoft.azure.sdk.iot.device.DeviceClient;
 import com.microsoft.azure.sdk.iot.device.IotHubClientProtocol;
@@ -24,10 +26,9 @@ public class MainActivity extends AppCompatActivity
 {
 
     private static String connString = "[device connection string]";
-    private static ListView messageView;
+    private static TextView messageText;
     private static ArrayList<String> communicationMessages = new ArrayList<>();
     private static DeviceClient iothubClient = null;
-    private static ArrayAdapter<String> receiveClientAdapter = null;
     private static int messageCounter = 0;
 
     @Override
@@ -36,23 +37,20 @@ public class MainActivity extends AppCompatActivity
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
 
-        messageView = (ListView)findViewById(R.id.messageView);
-
-        receiveClientAdapter = new ArrayAdapter<String>(this, android.R.layout.simple_list_item_1, communicationMessages);
-        messageView.setAdapter(receiveClientAdapter);
-
+        messageText = (TextView)findViewById(R.id.messageText);
+        showNewItem("START");
     }
 
     @Override
-    protected void onStart()
+    protected void onResume()
     {
-        super.onStart();
+        super.onResume();
 
         startIoTHub();
 
         try
         {
-            SendMessage(5, "START");
+            SendMessage(5, "RESUME");
         }
         catch(IOException e1)
         {
@@ -116,16 +114,18 @@ public class MainActivity extends AppCompatActivity
 
     public void SendMessage(String messageToSend) throws URISyntaxException, IOException
     {
+        showNewItem("send:" + messageToSend);
+
         try
         {
             Message msg = new Message(messageToSend);
             msg.setProperty("messageCount", Integer.toString(messageCounter));
-            showNewItem("send:" + messageToSend);
             EventCallback eventCallback = new EventCallback();
             iothubClient.sendEventAsync(msg, eventCallback, (messageCounter++));
         }
         catch (Exception e)
         {
+            showNewItem("Failed send event: " + e.toString());
         }
     }
 
@@ -169,10 +169,12 @@ public class MainActivity extends AppCompatActivity
         }
     }
 
-    protected static class EventCallback implements IotHubEventCallback {
-        public void execute(IotHubStatusCode status, Object context){
+    protected static class EventCallback implements IotHubEventCallback
+    {
+        public void execute(IotHubStatusCode status, Object context)
+        {
             Integer i = (Integer) context;
-            showNewItem("IoT Hub responded to message "+i.toString()
+            showNewItem("IoTHub responded message "+i.toString()
                     + " with status " + status.name());
         }
     }
@@ -242,7 +244,27 @@ public class MainActivity extends AppCompatActivity
     protected static void showNewItem(String newMessage)
     {
         communicationMessages.add(newMessage);
-        messageView.invalidateViews();
+        StringBuilder str = new StringBuilder();
+        int end = communicationMessages.size();
+        int start = end-20;
+        if(start<0)
+        {
+            start = 0;
+        }
+
+        for (String message:communicationMessages.subList(start, end))
+        {
+            str.append(message + "\r\n");
+        }
+
+        try
+        {
+            messageText.setText(str);
+        }
+        catch (Exception e)
+        {
+
+        }
     }
 
 }
