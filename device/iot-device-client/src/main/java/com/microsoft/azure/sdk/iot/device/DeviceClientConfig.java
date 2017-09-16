@@ -59,6 +59,11 @@ public final class DeviceClientConfig
     /** The context to be passed in to the message callback. */
     private Object deviceTelemetryMessageContext;
 
+    /**
+     * Maximum amount of messages that can be held in Queue
+     */
+    private Integer maximumQueueDepth = Integer.MAX_VALUE;
+
     private CustomLogger logger;
 
     /**
@@ -286,6 +291,16 @@ public final class DeviceClientConfig
     {
         // Codes_SRS_DEVICECLIENTCONFIG_11_012: [The function shall return 240000ms.]
         return DEFAULT_READ_TIMEOUT_MILLIS;
+    }
+
+    public Integer getMaximumQueueDepth()
+    {
+        return maximumQueueDepth;
+    }
+
+    public void setMaximumQueueDepth(Integer maximumQueueDepth)
+    {
+        this.maximumQueueDepth = maximumQueueDepth;
     }
 
     /**

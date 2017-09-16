@@ -422,6 +422,16 @@ public final class DeviceIO
         }
     }
 
+    public void setMaximumQueueDepth(Integer maximumQueueDepth) throws IOException
+    {
+        if (maximumQueueDepth < 1)
+        {
+            throw new IllegalArgumentException("Maximum queue depth cannot be less than 1");
+        }
+
+        this.config.setMaximumQueueDepth(maximumQueueDepth);
+    }
+
     /**
      * Getter for the transport protocol.
      *

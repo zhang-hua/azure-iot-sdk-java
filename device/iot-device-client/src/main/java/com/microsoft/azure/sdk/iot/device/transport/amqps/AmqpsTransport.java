@@ -15,6 +15,8 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.LinkedBlockingDeque;
 import java.util.concurrent.LinkedBlockingQueue;
 
+import static com.microsoft.azure.sdk.iot.device.IotHubStatusCode.QUEUING_SIZE_LIMIT_REACHED;
+
 /**
  * <p>
  * An AMQPS transport. Contains functionality for adding messages and sending
@@ -27,6 +29,7 @@ import java.util.concurrent.LinkedBlockingQueue;
  */
 public final class AmqpsTransport implements IotHubTransport, ServerListener
 {
+    private Integer maxQueueSize;
     /** The state of the AMQPS transport. */
     private State state;
 
@@ -34,16 +37,16 @@ public final class AmqpsTransport implements IotHubTransport, ServerListener
     private AmqpsIotHubConnection connection;
 
     /** Messages waiting to be sent to the IoT Hub. */
-    private final Queue<IotHubOutboundPacket> waitingMessages = new LinkedBlockingDeque<>();
+    private final Queue<IotHubOutboundPacket> waitingMessages;
 
     /** Messages which are sent to the IoT Hub but did not receive ack yet. */
-    private final Map<Integer, IotHubOutboundPacket> inProgressMessages = new ConcurrentHashMap<>();
+    private final Map<Integer, IotHubOutboundPacket> inProgressMessages;
 
     /** Messages received from the IoT Hub */
     private final Queue<AmqpsMessage> receivedMessages = new LinkedBlockingQueue<>();
 
     /** Messages whose callbacks that are waiting to be invoked. */
-    private final Queue<IotHubCallbackPacket> callbackList = new LinkedBlockingDeque<>();
+    private final Queue<IotHubCallbackPacket> callbackList;
 
     /** Connection state change callback */
     private IotHubConnectionStateCallback stateCallback;
@@ -65,6 +68,10 @@ public final class AmqpsTransport implements IotHubTransport, ServerListener
     {
         // Codes_SRS_AMQPSTRANSPORT_15_001: [The constructor shall save the input parameters into instance variables.]
         this.config = config;
+        this.maxQueueSize = this.config.getMaximumQueueDepth();
+        waitingMessages = new LinkedBlockingDeque<>(maxQueueSize);
+        inProgressMessages = new ConcurrentHashMap<>(maxQueueSize);
+        callbackList = new LinkedBlockingDeque<>(maxQueueSize);
 
         // Codes_SRS_AMQPSTRANSPORT_15_002: [The constructor shall set the transport state to CLOSED.]
         this.state = State.CLOSED;
@@ -140,8 +147,7 @@ public final class AmqpsTransport implements IotHubTransport, ServerListener
             if (message != null && message.getBytes().length > 0)
             {
                 IotHubCallbackPacket callbackPacket = new IotHubCallbackPacket(IotHubStatusCode.MESSAGE_CANCELLED_ONCLOSE, packet.getCallback(), packet.getContext());
-                this.callbackList.add(callbackPacket);
-                
+                this.addToCallbackQueue(callbackPacket);
             }
         }
 
@@ -150,7 +156,7 @@ public final class AmqpsTransport implements IotHubTransport, ServerListener
         {
             IotHubOutboundPacket packet = entry.getValue();
             IotHubCallbackPacket callbackPacket = new IotHubCallbackPacket(IotHubStatusCode.MESSAGE_CANCELLED_ONCLOSE, packet.getCallback(), packet.getContext());
-            this.callbackList.add(callbackPacket);
+            this.addToCallbackQueue(callbackPacket);
         }
                     
         // Codes_SRS_AMQPSTRANSPORT_99_037: [The method will invoke all the callbacks..]
@@ -189,7 +195,7 @@ public final class AmqpsTransport implements IotHubTransport, ServerListener
 
         // Codes_SRS_AMQPSTRANSPORT_15_011: [The function shall add a packet containing the message, callback, and callback context to the queue of messages waiting to be sent.]
         IotHubOutboundPacket packet = new IotHubOutboundPacket(message, callback, callbackContext);
-        this.waitingMessages.add(packet);
+        this.addToWaitingQueue(packet);
     }
 
     /**
@@ -234,8 +240,6 @@ public final class AmqpsTransport implements IotHubTransport, ServerListener
             return;
         }
 
-        Collection<IotHubOutboundPacket> failedMessages = new ArrayList<>() ;
-
         // Codes_SRS_AMQPSTRANSPORT_15_014: [The function shall attempt to send every message on its waiting list, one at a time.]
         while (!this.waitingMessages.isEmpty())
         {
@@ -253,7 +257,7 @@ public final class AmqpsTransport implements IotHubTransport, ServerListener
                 {
                     logger.LogInfo("Creating a callback for the expired message with MESSAGE_EXPIRED status, method name is %s ", logger.getMethodName());
                     IotHubCallbackPacket callbackPacket = new IotHubCallbackPacket(IotHubStatusCode.MESSAGE_EXPIRED, packet.getCallback(), packet.getContext());
-                    this.callbackList.add(callbackPacket);
+                    this.addToCallbackQueue(callbackPacket);
                 }
                 else
                 {
@@ -286,18 +290,57 @@ public final class AmqpsTransport implements IotHubTransport, ServerListener
                     // Codes_SRS_AMQPSTRANSPORT_15_016: [If the sent message hash is valid, it shall be added to the in progress map.]
                     if (sendHash != -1)
                     {
-                        this.inProgressMessages.put(sendHash, packet);
+                        this.addToInProgressQueue(sendHash, packet);
                     }
                     // Codes_SRS_AMQPSTRANSPORT_15_017: [If the sent message hash is not valid, it shall be buffered to be sent in a subsequent attempt.]
                     else
                     {
-                        failedMessages.add(packet);
+                        this.addToWaitingQueue(packet);
                     }
                 }
             }
         }
+    }
 
-        this.waitingMessages.addAll(failedMessages);
+    private synchronized void addToWaitingQueue(IotHubOutboundPacket iotHubOutboundPacket)
+    {
+        if (this.waitingMessages.size() >= maxQueueSize)
+        {
+            // Waiting queue could not add more messages, inform user
+            IotHubCallbackPacket packet = new IotHubCallbackPacket(QUEUING_SIZE_LIMIT_REACHED, iotHubOutboundPacket.getCallback(), iotHubOutboundPacket.getContext());
+            this.addToCallbackQueue(packet);
+        }
+        else
+        {
+            this.waitingMessages.add(iotHubOutboundPacket);
+        }
+    }
+
+    private synchronized void addToInProgressQueue(Integer key, IotHubOutboundPacket iotHubOutboundPacket)
+    {
+        if (this.inProgressMessages.size() >= maxQueueSize)
+        {
+            IotHubCallbackPacket packet = new IotHubCallbackPacket(QUEUING_SIZE_LIMIT_REACHED, iotHubOutboundPacket.getCallback(), iotHubOutboundPacket.getContext());
+            addToCallbackQueue(packet);
+        }
+        else
+        {
+            this.inProgressMessages.put(key, iotHubOutboundPacket);
+        }
+    }
+
+    private synchronized void addToCallbackQueue(IotHubCallbackPacket iotHubCallbackPacket)
+    {
+        if (this.callbackList.size() >= maxQueueSize)
+        {
+            // invoke callbacks and try again
+            invokeCallbacks();
+            addToCallbackQueue(iotHubCallbackPacket);
+        }
+        else
+        {
+            this.callbackList.add(iotHubCallbackPacket);
+        }
     }
 
     /**
@@ -305,7 +348,7 @@ public final class AmqpsTransport implements IotHubTransport, ServerListener
      *
      * @throws IllegalStateException if the transport is closed.
      */
-    public void invokeCallbacks() throws IllegalStateException
+    public synchronized void invokeCallbacks() throws IllegalStateException
     {
         // Codes_SRS_AMQPSTRANSPORT_15_019: [If the transport closed, the function shall throw an IllegalStateException.]
         if (this.state == State.CLOSED)
@@ -421,12 +464,12 @@ public final class AmqpsTransport implements IotHubTransport, ServerListener
                 // Codes_SRS_AMQPSTRANSPORT_15_030: [If the message was successfully delivered,
                 // its callback is added to the list of callbacks to be executed.]
                 IotHubCallbackPacket callbackPacket = new IotHubCallbackPacket(IotHubStatusCode.OK_EMPTY, packet.getCallback(), packet.getContext());
-                this.callbackList.add(callbackPacket);
+                this.addToCallbackQueue(callbackPacket);
             } else
             {
                 logger.LogInfo("Message with messageid %s was not delivered to IoTHub, it is buffered to be sent again, method name is %s ", packet.getMessage().getMessageId(), logger.getMethodName());
                 // Codes_SRS_AMQPSTRANSPORT_15_031: [If the message was not delivered successfully, it is buffered to be sent again.]
-                waitingMessages.add(packet);
+                this.addToWaitingQueue(packet);
             }
         }
     }
@@ -440,7 +483,7 @@ public final class AmqpsTransport implements IotHubTransport, ServerListener
         // Codes_SRS_AMQPSTRANSPORT_15_032: [The messages in progress are buffered to be sent again.]
         for (Map.Entry<Integer, IotHubOutboundPacket> entry : inProgressMessages.entrySet())
         {
-            this.waitingMessages.add(entry.getValue());
+            this.addToWaitingQueue(entry.getValue());
         }
 
         // Codes_SRS_AMQPSTRANSPORT_15_033: [The map of messages in progress is cleared.]

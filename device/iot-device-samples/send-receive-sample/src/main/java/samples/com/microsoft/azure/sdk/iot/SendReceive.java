@@ -17,7 +17,7 @@ import java.util.Scanner;
  */
 public class SendReceive
 {
-    private static final int D2C_MESSAGE_TIMEOUT = 2000; // 2 seconds
+    private static final int D2C_MESSAGE_TIMEOUT = 2000000000; // 2 seconds
     private static List failedMessageListOnClose = new ArrayList(); // List of messages that failed on close
 
     /** Used as a counter in the message callback. */
@@ -278,7 +278,7 @@ public class SendReceive
                 System.out.println(msgStr);
                 EventCallback eventCallback = new EventCallback();
                 client.sendEventAsync(msg, eventCallback, msg);
-            } 
+            }
             
             catch (Exception e)
             {

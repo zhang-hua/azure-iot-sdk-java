@@ -99,6 +99,7 @@ public final class DeviceClient implements Closeable
     private static final String SET_SEND_INTERVAL = "SetSendInterval";
     private static final String SET_CERTIFICATE_PATH = "SetCertificatePath";
     private static final String SET_SAS_TOKEN_EXPIRY_TIME = "SetSASTokenExpiryTime";
+    private static final String SET_MAX_QUEUE_LIMIT = "SetMaxQueueLimit";
 
     private DeviceClientConfig config;
     private DeviceIO deviceIO;
@@ -697,6 +698,35 @@ public final class DeviceClient implements Closeable
         }
     }
 
+    private void setOption_SetMaxQueueLimit(Object value)
+    {
+        if (value != null)
+        {
+            // Codes_SRS_DEVICECLIENT_21_041: ["SetSendInterval" needs to have value type long.]
+            if (value instanceof Integer)
+            {
+                try
+                {
+                    logger.LogInfo("Setting maximum queue limit as %d , method name is %s ", value, logger.getMethodName());
+                    this.deviceIO.setMaximumQueueDepth((Integer) value);
+                }
+                catch (IOException e)
+                {
+                    throw new IOError(e);
+                }
+            }
+            else
+            {
+                throw new IllegalArgumentException("value is not Integer = " + value);
+            }
+        }
+        else
+        {
+            throw new IllegalArgumentException("value cannot be null");
+        }
+
+    }
+
     /**
      * Sets a runtime option identified by parameter {@code optionName}
      * to {@code value}.
@@ -785,6 +815,26 @@ public final class DeviceClient implements Closeable
                 {
                     //Codes__SRS_DEVICECLIENT_25_023: ["SetSASTokenExpiryTime" is available for HTTPS/AMQP/MQTT/AMQPS_WS/MQTT_WS.]
                     setOption_SetSASTokenExpiryTime(value);
+                    break;
+                }
+                case SET_MAX_QUEUE_LIMIT:
+                {
+                    //Codes__SRS_DEVICECLIENT_25_023: ["SetSASTokenExpiryTime" is available for HTTPS/AMQP/MQTT/AMQPS_WS/MQTT_WS.]
+                    if ((this.deviceIO.getProtocol() == IotHubClientProtocol.AMQPS) ||
+                            (this.deviceIO.getProtocol() == IotHubClientProtocol.AMQPS_WS))
+                    {
+                        setOption_SetMaxQueueLimit(value);
+
+                    }
+                    else
+                    {
+                        logger.LogError("optionName %s is unknown for %s, method name is %s ", optionName,
+                                        this.deviceIO.getProtocol().toString(), logger.getMethodName());
+                        // Codes_SRS_DEVICECLIENT_02_015: [If optionName is null or not an option handled by the
+                        // client, then it shall throw IllegalArgumentException.]
+                        throw new IllegalArgumentException("optionName is unknown = " + optionName +
+                                                                   " for " + this.deviceIO.getProtocol().toString());
+                    }
                     break;
                 }
                 default:
