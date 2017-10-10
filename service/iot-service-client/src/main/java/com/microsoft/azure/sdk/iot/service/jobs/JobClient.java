@@ -30,6 +30,8 @@ public class JobClient
 
     private final static byte[] EMPTY_JSON = "{}".getBytes();
 
+    private String continuationToken;
+
     private IotHubConnectionString iotHubConnectionString = null;
 
     /**
@@ -339,24 +341,7 @@ public class JobClient
      */
     public synchronized Query queryDeviceJob(String sqlQuery, Integer pageSize) throws IotHubException, IOException
     {
-        if (sqlQuery == null || sqlQuery.length() == 0)
-        {
-            //CodesSRS_JOBCLIENT_25_036: [If the sqlQuery is null, the queryDeviceJob shall throw IllegalArgumentException.]
-            throw new IllegalArgumentException("Query cannot be null or empty");
-        }
-
-        if (pageSize <= 0)
-        {
-            //Codes_SRS_DEVICETWIN_25_048: [ The method shall throw IllegalArgumentException if the page size is zero or negative.]
-            throw new IllegalArgumentException("pagesize cannot be negative or zero");
-        }
-
-        //Codes_SRS_JOBCLIENT_25_039: [The queryDeviceJob shall create a query object for the type DEVICE_JOB.]
-        Query deviceJobQuery = new Query(sqlQuery, pageSize, QueryType.DEVICE_JOB);
-
-        //Codes_SRS_JOBCLIENT_25_040: [The queryDeviceJob shall send a query request on the query object using Query URL, HTTP POST method and wait for the response by calling sendQueryRequest.]
-        deviceJobQuery.sendQueryRequest(iotHubConnectionString, iotHubConnectionString.getUrlTwinQuery(), HttpMethod.POST, MAX_TIMEOUT);
-        return deviceJobQuery;
+        return this.queryDeviceJob(sqlQuery, pageSize);
     }
 
     /**
@@ -368,8 +353,14 @@ public class JobClient
      */
     public synchronized Query queryDeviceJob(String sqlQuery) throws IotHubException, IOException
     {
-        //Codes_SRS_JOBCLIENT_25_038: [If the pageSize is not specified, default pageSize of 100 shall be used .]
         return queryDeviceJob(sqlQuery, DEFAULT_PAGE_SIZE);
+    }
+
+    public synchronized Query queryDeviceJob(String sqlQuery, QueryOptions options) throws IotHubException, IOException
+    {
+        Query deviceJobQuery = new Query(sqlQuery, DEFAULT_PAGE_SIZE, QueryType.DEVICE_JOB);
+        deviceJobQuery.sendQueryRequest(iotHubConnectionString, iotHubConnectionString.getUrlTwinQuery(), HttpMethod.POST, MAX_TIMEOUT, options.getContinuationToken());
+        return deviceJobQuery;
     }
 
     /**
@@ -386,6 +377,9 @@ public class JobClient
             //Codes_SRS_JOBCLIENT_25_046: [If the input query is null, the hasNextJob shall throw IllegalArgumentException.]
             throw new IllegalArgumentException("Query cannot be null");
         }
+
+        this.continuationToken = query.getContinuationToken();
+
         // Codes_SRS_JOBCLIENT_25_047: [hasNextJob shall return true if the next job exist, false other wise.]
         return query.hasNext();
     }
@@ -444,9 +438,10 @@ public class JobClient
         //Codes_SRS_JOBCLIENT_25_045: [The queryDeviceJob shall send a query request on the query object using Query URL, HTTP GET method and wait for the response by calling sendQueryRequest.]
         String jobTypeString = (jobType == null) ? null : jobType.toString();
         String jobStatusString = (jobStatus == null) ? null : jobStatus.toString();
-        jobResponseQuery.sendQueryRequest(iotHubConnectionString, iotHubConnectionString.getUrlQuery(jobTypeString, jobStatusString), HttpMethod.GET, MAX_TIMEOUT);
+        jobResponseQuery.sendQueryRequest(iotHubConnectionString, iotHubConnectionString.getUrlQuery(jobTypeString, jobStatusString), HttpMethod.GET, MAX_TIMEOUT, null);
         return jobResponseQuery;
     }
+
     /**
      * Query the iot hub for a jobs response. Query response are limited by default page size per attempt
      * @param jobType The type of job to query for
@@ -461,8 +456,25 @@ public class JobClient
         return queryJobResponse(jobType, jobStatus, DEFAULT_PAGE_SIZE);
     }
 
+    public synchronized Query queryJobResponse(JobType jobType, JobStatus jobStatus, QueryOptions options) throws IOException, IotHubException
+    {
+        //Codes_SRS_JOBCLIENT_25_043: [If the pageSize is not specified, default pageSize of 100 shall be used.] SRS_JOBCLIENT_25_044: [The queryDeviceJob shall create a query object for the type JOB_RESPONSE.]
+        Query jobResponseQuery = new Query(DEFAULT_PAGE_SIZE, QueryType.JOB_RESPONSE);
+
+        //Codes_SRS_JOBCLIENT_25_045: [The queryDeviceJob shall send a query request on the query object using Query URL, HTTP GET method and wait for the response by calling sendQueryRequest.]
+        String jobTypeString = (jobType == null) ? null : jobType.toString();
+        String jobStatusString = (jobStatus == null) ? null : jobStatus.toString();
+        jobResponseQuery.sendQueryRequest(iotHubConnectionString, iotHubConnectionString.getUrlQuery(jobTypeString, jobStatusString), HttpMethod.GET, MAX_TIMEOUT, options.getContinuationToken());
+        return jobResponseQuery;
+    }
+
     @SuppressWarnings("unused")
     protected JobClient()
     {
+    }
+
+    public String getContinuationToken()
+    {
+        return this.continuationToken;
     }
 }

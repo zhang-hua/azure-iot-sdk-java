@@ -26,6 +26,8 @@ public class DeviceTwin
     private final long USE_DEFAULT_TIMEOUT = 0;
     private final int DEFAULT_PAGE_SIZE = 100;
 
+    private String continuationToken;
+
     /**
      * Static constructor to create instance from connection string
      *
@@ -373,24 +375,13 @@ public class DeviceTwin
      */
     public synchronized Query queryTwin(String sqlQuery, Integer pageSize) throws IotHubException, IOException
     {
-        if (sqlQuery == null || sqlQuery.length() == 0)
-        {
-            //Codes_SRS_DEVICETWIN_25_047: [ The method shall throw IllegalArgumentException if the query is null or empty.]
-            throw new IllegalArgumentException("Query cannot be null or empty");
-        }
+        return this.queryTwin(sqlQuery, pageSize);
+    }
 
-        if (pageSize <= 0)
-        {
-            //Codes_SRS_DEVICETWIN_25_048: [ The method shall throw IllegalArgumentException if the page size is zero or negative.]
-            throw new IllegalArgumentException("pagesize cannot be negative or zero");
-        }
-
-        //Codes_SRS_DEVICETWIN_25_050: [ The method shall create a new Query Object of Type TWIN. ]
-        Query deviceTwinQuery = new Query(sqlQuery, pageSize, QueryType.TWIN);
-
-        //Codes_SRS_DEVICETWIN_25_049: [ The method shall build the URL for this operation by calling getUrlTwinQuery ]
-        //Codes_SRS_DEVICETWIN_25_051: [ The method shall send a Query Request to IotHub as HTTP Method Post on the query Object by calling sendQueryRequest.]
-        deviceTwinQuery.sendQueryRequest(iotHubConnectionString, iotHubConnectionString.getUrlTwinQuery(), HttpMethod.POST, USE_DEFAULT_TIMEOUT);
+    public synchronized Query queryTwin(String sqlQuery, QueryOptions options) throws IotHubException, IOException
+    {
+        Query deviceTwinQuery = new Query(sqlQuery, DEFAULT_PAGE_SIZE, QueryType.TWIN);
+        deviceTwinQuery.sendQueryRequest(iotHubConnectionString, iotHubConnectionString.getUrlTwinQuery(), HttpMethod.POST, USE_DEFAULT_TIMEOUT, options.getContinuationToken());
         return deviceTwinQuery;
     }
 
@@ -403,7 +394,6 @@ public class DeviceTwin
      */
     public synchronized Query queryTwin(String sqlQuery) throws IotHubException, IOException
     {
-        //Codes_SRS_DEVICETWIN_25_052: [ If the pageSize if not provided then a default pageSize of 100 is used for the query.]
         return this.queryTwin(sqlQuery, DEFAULT_PAGE_SIZE);
     }
 
@@ -423,6 +413,8 @@ public class DeviceTwin
             //Codes_SRS_DEVICETWIN_25_053: [ The method shall throw IllegalArgumentException if query is null ]
             throw new IllegalArgumentException("Query cannot be null");
         }
+
+        this.continuationToken = deviceTwinQuery.getContinuationToken();
 
         //Codes_SRS_DEVICETWIN_25_055: [ If a queryResponse is available, this method shall return true as is to the user, and false otherwise.. ]
         return deviceTwinQuery.hasNext();
@@ -514,5 +506,10 @@ public class DeviceTwin
 
         // Codes_SRS_DEVICETWIN_21_068: [The scheduleUpdateTwin shall return the created instance of the Job class ]
         return job;
+    }
+
+    public String getContinuationToken()
+    {
+        return continuationToken;
     }
 }

@@ -10,6 +10,7 @@ import com.microsoft.azure.sdk.iot.service.IotHubConnectionStringBuilder;
 import com.microsoft.azure.sdk.iot.service.exceptions.IotHubException;
 import com.microsoft.azure.sdk.iot.service.transport.http.HttpMethod;
 
+import java.awt.print.Pageable;
 import java.io.IOException;
 import java.util.NoSuchElementException;
 
@@ -18,6 +19,8 @@ public class RawTwinQuery
     private IotHubConnectionString iotHubConnectionString = null;
     private final long USE_DEFAULT_TIMEOUT = 0;
     private final int DEFAULT_PAGE_SIZE = 100;
+
+    private String continuationToken;
 
     private RawTwinQuery()
     {
@@ -58,24 +61,7 @@ public class RawTwinQuery
      */
     public synchronized Query query(String sqlQuery, Integer pageSize) throws IotHubException, IOException
     {
-        if (sqlQuery == null || sqlQuery.length() == 0)
-        {
-            //Codes_SRS_RAW_QUERY_25_004: [ The method shall throw IllegalArgumentException if the query is null or empty.]
-            throw new IllegalArgumentException("Query cannot be null or empty");
-        }
-
-        if (pageSize <= 0)
-        {
-            //Codes_SRS_RAW_QUERY_25_005: [ The method shall throw IllegalArgumentException if the page size is zero or negative.]
-            throw new IllegalArgumentException("pagesize cannot be negative or zero");
-        }
-
-        //Codes_SRS_RAW_QUERY_25_007: [ The method shall create a new Query Object of Type Raw. ]
-        Query rawQuery = new Query(sqlQuery, pageSize, QueryType.RAW);
-        //Codes_SRS_RAW_QUERY_25_006: [ The method shall build the URL for this operation by calling getUrlTwinQuery ]
-        //Codes_SRS_RAW_QUERY_25_008: [ The method shall send a Query Request to IotHub as HTTP Method Post on the query Object by calling sendQueryRequest.]
-        rawQuery.sendQueryRequest(iotHubConnectionString, iotHubConnectionString.getUrlTwinQuery(), HttpMethod.POST, USE_DEFAULT_TIMEOUT);
-        return rawQuery;
+        return this.query(sqlQuery, pageSize);
     }
 
     /**
@@ -89,6 +75,13 @@ public class RawTwinQuery
     {
         //Codes_SRS_RAW_QUERY_25_009: [ If the pageSize if not provided then a default pageSize of 100 is used for the query.]
         return this.query(sqlQuery, DEFAULT_PAGE_SIZE);
+    }
+
+    public synchronized Query query(String sqlQuery, QueryOptions options) throws IotHubException, IOException
+    {
+        Query rawQuery = new Query(sqlQuery, DEFAULT_PAGE_SIZE, QueryType.RAW);
+        rawQuery.sendQueryRequest(iotHubConnectionString, iotHubConnectionString.getUrlTwinQuery(), HttpMethod.POST, USE_DEFAULT_TIMEOUT, options.getContinuationToken());
+        return rawQuery;
     }
 
     /**
@@ -106,6 +99,8 @@ public class RawTwinQuery
             //Codes_SRS_RAW_QUERY_25_010: [ The method shall throw IllegalArgumentException if query is null ]
             throw new IllegalArgumentException("Query cannot be null");
         }
+
+        this.continuationToken = query.getContinuationToken();
 
         //Codes_SRS_RAW_QUERY_25_011: [ The method shall check if a response to query is avaliable by calling hasNext on the query object.]
         return query.hasNext();
@@ -141,5 +136,10 @@ public class RawTwinQuery
             throw new IOException("Received a response that could not be parsed");
         }
 
+    }
+
+    public String getContinuationToken()
+    {
+        return this.continuationToken;
     }
 }
