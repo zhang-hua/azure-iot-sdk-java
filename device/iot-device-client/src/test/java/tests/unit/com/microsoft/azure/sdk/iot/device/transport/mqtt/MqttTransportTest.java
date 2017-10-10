@@ -4,6 +4,7 @@
 package tests.unit.com.microsoft.azure.sdk.iot.device.transport.mqtt;
 
 import com.microsoft.azure.sdk.iot.device.*;
+import com.microsoft.azure.sdk.iot.device.auth.IotHubSasTokenAuthentication;
 import com.microsoft.azure.sdk.iot.device.transport.IotHubCallbackPacket;
 import com.microsoft.azure.sdk.iot.device.transport.IotHubOutboundPacket;
 import com.microsoft.azure.sdk.iot.device.transport.mqtt.MqttIotHubConnection;
@@ -21,6 +22,11 @@ import java.util.Queue;
 import static org.hamcrest.core.Is.is;
 import static org.junit.Assert.*;
 
+/**
+ * Unit tests for MqttTransport.java
+ * Method: 40%
+ * Lines: 32%
+ */
 public class MqttTransportTest
 {
     @Mocked
@@ -28,6 +34,9 @@ public class MqttTransportTest
 
     @Mocked
     MqttIotHubConnection mockConnection;
+
+    @Mocked
+    IotHubSasTokenAuthentication mockSasTokenAuthentication;
 
     // Tests_SRS_MQTTTRANSPORT_15_003: [The function shall establish an MQTT connection
     // with IoT Hub given in the configuration.]
@@ -344,6 +353,68 @@ public class MqttTransportTest
             }
         };
     }
+
+    //Tests_SRS_MQTTTRANSPORT_34_023: [If the config is using sas token auth and its token has expired, the message shall not be sent, but shall be added to the callback list with IotHubStatusCode UNAUTHORIZED.]
+    @Test
+    public <T extends Queue> void sendMessagesWithExpiredSasTokenAddsToCallbackQueue(
+            @Mocked final Message mockMsg,
+            @Mocked final IotHubEventCallback mockCallback,
+            @Mocked final IotHubOutboundPacket mockPacket,
+            @Mocked final IotHubCallbackPacket mockCallbackPacket)
+            throws IOException
+    {
+        //arrange
+        final Queue mockQueue = new MockUp<T>()
+        {
+
+        }.getMockInstance();
+        final Map<String, Object> context = new HashMap<>();
+        new NonStrictExpectations()
+        {
+            {
+                new MqttIotHubConnection(mockConfig);
+                result = mockConnection;
+                new IotHubOutboundPacket(mockMsg, mockCallback, context);
+                result = mockPacket;
+                mockPacket.getCallback();
+                result = mockCallback;
+                mockPacket.getContext();
+                result = context;
+                mockConnection.sendEvent((Message) any);
+                returns(IotHubStatusCode.OK_EMPTY, IotHubStatusCode.ERROR);
+                new IotHubCallbackPacket(IotHubStatusCode.UNAUTHORIZED, mockCallback, context);
+                result = mockCallbackPacket;
+                mockCallbackPacket.getStatus();
+                result = IotHubStatusCode.UNAUTHORIZED;
+                mockConfig.getAuthenticationType();
+                result = DeviceClientConfig.AuthType.SAS_TOKEN;
+                mockConfig.getSasTokenAuthentication();
+                result = mockSasTokenAuthentication;
+                mockSasTokenAuthentication.isRenewalNecessary();
+                result = true;
+            }
+        };
+
+        MqttTransport transport = new MqttTransport(mockConfig);
+        transport.open();
+        transport.addMessage(mockMsg, mockCallback, context);
+
+        //act
+        transport.sendMessages();
+
+        //assert
+        Queue<IotHubCallbackPacket> callbackList = Deencapsulation.getField(transport, "callbackList");
+        assertEquals(1, callbackList.size());
+        assertEquals(IotHubStatusCode.UNAUTHORIZED, callbackList.remove().getStatus());
+        new VerificationsInOrder()
+        {
+            {
+                mockConnection.sendEvent((Message) any);
+                times = 0;
+            }
+        };
+    }
+
 
     // Tests_SRS_MQTTTRANSPORT_15_011: [If the IoT Hub could not be reached, 
     // the message shall be buffered to be sent again next time.]

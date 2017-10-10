@@ -101,6 +101,8 @@ public void sendMessages() throws IllegalStateException;
 
 **SRS_MQTTTRANSPORT_15_012: [**If the MQTT connection is closed, the function shall throw an IllegalStateException.**]**
 
+**SRS_MQTTTRANSPORT_34_023: [**If the config is using sas token auth and its token has expired, the message shall not be sent, but shall be added to the callback list with IotHubStatusCode UNAUTHORIZED.**]**
+
 
 ### invokeCallbacks
 

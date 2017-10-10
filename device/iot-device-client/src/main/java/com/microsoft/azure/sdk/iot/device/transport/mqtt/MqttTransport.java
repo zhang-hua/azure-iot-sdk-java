@@ -105,7 +105,6 @@ public final class MqttTransport implements IotHubTransport
 
             IotHubCallbackPacket callbackPacket = new IotHubCallbackPacket(IotHubStatusCode.MESSAGE_CANCELLED_ONCLOSE, packet.getCallback(), packet.getContext());
             this.callbackList.add(callbackPacket);
-           
         }
        
         // Codes_SRS_MQTTTRANSPORT_99_021: [The method will invoke the callback list]
@@ -203,22 +202,30 @@ public final class MqttTransport implements IotHubTransport
             {
                 IotHubOutboundPacket packet = this.waitingList.remove();
 
-                try
+                if (this.config.getAuthenticationType() == DeviceClientConfig.AuthType.SAS_TOKEN && this.config.getSasTokenAuthentication().isRenewalNecessary())
                 {
-                    IotHubStatusCode status = this.mqttIotHubConnection.sendEvent(packet.getMessage());
-
-                    // Codes_SRS_MQTTTRANSPORT_15_010: [For each message being sent, the function shall add
-                    // the IoT Hub status code along with the callback and context to the callback list.]
-                    IotHubCallbackPacket callbackPacket = new IotHubCallbackPacket(status, packet.getCallback(), packet.getContext());
+                    //Codes_SRS_MQTTTRANSPORT_34_023: [If the config is using sas token auth and its token has expired, the message shall not be sent, but shall be added to the callback list with IotHubStatusCode UNAUTHORIZED.]
+                    IotHubCallbackPacket callbackPacket = new IotHubCallbackPacket(IotHubStatusCode.UNAUTHORIZED, packet.getCallback(), packet.getContext());
                     this.callbackList.add(callbackPacket);
                 }
-                // Codes_SRS_MQTTTRANSPORT_15_011: [If the IoT Hub could not be reached, the message
-                // shall be buffered to be sent again next time.]
-                catch (IllegalStateException e)
+                else
                 {
-                    this.waitingList.add(packet);
-                }
+                    try
+                    {
+                        IotHubStatusCode status = this.mqttIotHubConnection.sendEvent(packet.getMessage());
 
+                        // Codes_SRS_MQTTTRANSPORT_15_010: [For each message being sent, the function shall add
+                        // the IoT Hub status code along with the callback and context to the callback list.]
+                        IotHubCallbackPacket callbackPacket = new IotHubCallbackPacket(status, packet.getCallback(), packet.getContext());
+                        this.callbackList.add(callbackPacket);
+                    }
+                    // Codes_SRS_MQTTTRANSPORT_15_011: [If the IoT Hub could not be reached, the message
+                    // shall be buffered to be sent again next time.]
+                    catch (IllegalStateException e)
+                    {
+                        this.waitingList.add(packet);
+                    }
+                }
             }
         }
     }
