@@ -77,7 +77,6 @@ public final class AmqpsIotHubConnection extends BaseHandler
      * @throws IOException if failed connecting to iothub.
      */
     public AmqpsIotHubConnection(DeviceClientConfig config, ArrayList<AmqpsDeviceOperations> amqpsDeviceOperationsList) throws IOException
-
     {
         // Codes_SRS_AMQPSIOTHUBCONNECTION_15_001: [The constructor shall throw IllegalArgumentException if
         // any of the parameters of the configuration is null or empty.]
@@ -97,7 +96,7 @@ public final class AmqpsIotHubConnection extends BaseHandler
         {
             throw new IllegalArgumentException("hubName cannot be null or empty.");
         }
-        if (config.getAuthenticationType() == DeviceClientConfig.AuthType.SAS_TOKEN)
+        if (config.getAuthenticationType() == DeviceClientConfig.AuthType.SAS_TOKEN || config.getAuthenticationType() == DeviceClientConfig.AuthType.CBS)
         {
             if (config.getIotHubConnectionString().getSharedAccessKey() == null || config.getIotHubConnectionString().getSharedAccessKey().isEmpty())
             {
@@ -152,9 +151,9 @@ public final class AmqpsIotHubConnection extends BaseHandler
         // Codes_SRS_AMQPSIOTHUBCONNECTION_12_002: [The constructor shall create a Proton reactor.]
         try
         {
-            reactor = Proton.reactor(this);
-
-        } catch (IOException e)
+            this.reactor = createReactor();
+        }
+        catch (IOException e)
         {
             // Codes_SRS_AMQPSIOTHUBCONNECTION_12_003: [The constructor shall throw IOException if the Proton reactor creation failed.]
             logger.LogError(e);
@@ -181,6 +180,7 @@ public final class AmqpsIotHubConnection extends BaseHandler
             try
             {
                 // Codes_SRS_AMQPSIOTHUBCONNECTION_15_009: [The function shall trigger the Reactor (Proton) to begin running.]
+                // Codes_SRS_AMQPSIOTHUBCONNECTION_34_052: [If the config is not using sas token authentication, then the created iotHubReactor shall omit the Sasl.]
                 openAsync();
             }
             catch(Exception e)
@@ -260,19 +260,18 @@ public final class AmqpsIotHubConnection extends BaseHandler
 
     private void openAsync() throws IOException
     {
-        if (this.config.getAuthenticationType() == DeviceClientConfig.AuthType.SAS_TOKEN)
+        if (this.config.getAuthenticationType() == DeviceClientConfig.AuthType.X509_CERTIFICATE)
         {
-            this.sasToken = this.config.getSasTokenAuthentication().getRenewedSasToken();
+            this.sasToken = null;
         }
         else
         {
-            //Codes_SRS_AMQPSIOTHUBCONNECTION_34_043: [If the config is not using sas token authentication, this function shall throw an IOException.]
-            throw new IOException("AMQPS operations do not support using x509 authentication");
+            this.sasToken = this.config.getSasTokenAuthentication().getRenewedSasToken();
         }
 
         if (this.reactor == null)
         {
-            this.reactor = Proton.reactor(this);
+            this.reactor = createReactor();
         }
 
         if (executorService == null)
@@ -481,9 +480,12 @@ public final class AmqpsIotHubConnection extends BaseHandler
                 ((TransportInternal)transport).addTransportLayer(webSocket);
             }
 
-            // Codes_SRS_AMQPSIOTHUBCONNECTION_15_031: [The event handler shall set the SASL_PLAIN authentication on the transport using the given user name and sas token.]
-            Sasl sasl = transport.sasl();
-            sasl.plain(this.userName, this.sasToken);
+            if (this.config.getAuthenticationType() != DeviceClientConfig.AuthType.X509_CERTIFICATE)
+            {
+                // Codes_SRS_AMQPSIOTHUBCONNECTION_15_031: [The event handler shall set the SASL_PLAIN authentication on the transport using the given user name and sas token.]
+                Sasl sasl = transport.sasl();
+                sasl.plain(this.userName, this.sasToken);
+            }
 
             try
             {
@@ -742,6 +744,8 @@ public final class AmqpsIotHubConnection extends BaseHandler
         logger.LogDebug("Exited from method %s", logger.getMethodName());
     }
 
+    
+
     /**
      * Subscribe a listener to the list of listeners.
      * @param listener the listener to be subscribed.
@@ -808,9 +812,13 @@ public final class AmqpsIotHubConnection extends BaseHandler
         /*
         Codes_SRS_AMQPSIOTHUBCONNECTION_25_049: [**The event handler shall set the SSL Context to IOTHub SSL context containing valid certificates.**]**
          */
-        if (this.config.getAuthenticationType() == DeviceClientConfig.AuthType.SAS_TOKEN)
+        if (this.config.getAuthenticationType() == DeviceClientConfig.AuthType.SAS_TOKEN || this.config.getAuthenticationType() == DeviceClientConfig.AuthType.CBS)
         {
             domain.setSslContext(this.config.getSasTokenAuthentication().getSSLContext());
+        }
+        else if (this.config.getAuthenticationType() == DeviceClientConfig.AuthType.X509_CERTIFICATE)
+        {
+            domain.setSslContext(this.config.getX509Authentication().getSSLContext());
         }
 
         return domain;
@@ -833,6 +841,22 @@ public final class AmqpsIotHubConnection extends BaseHandler
         {
             iotHubReactor.run();
             return null;
+        }
+    }
+
+    private Reactor createReactor() throws IOException
+    {
+        if (this.config.getAuthenticationType() == DeviceClientConfig.AuthType.X509_CERTIFICATE)
+        {
+            //Codes_SRS_AMQPSIOTHUBCONNECTION_34_053: [If the config is using x509 Authentication, the created Proton reactor shall not have SASL enabled by default.]
+            //ReactorOptions options = new ReactorOptions();
+            //options.setEnableSaslByDefault(false);
+            //return Proton.reactor(options, this);
+            return Proton.reactor(this);
+        }
+        else
+        {
+            return Proton.reactor(this);
         }
     }
 }

@@ -91,7 +91,7 @@ public class HttpsIotHubConnection
             }
 
             SSLContext sslContext = null;
-            if (this.config.getAuthenticationType() == DeviceClientConfig.AuthType.SAS_TOKEN)
+            if (this.config.getAuthenticationType() == DeviceClientConfig.AuthType.SAS_TOKEN || this.config.getAuthenticationType() == DeviceClientConfig.AuthType.CBS)
             {
                 sslContext = this.config.getSasTokenAuthentication().getSSLContext();
 
@@ -167,7 +167,7 @@ public class HttpsIotHubConnection
             }
 
             SSLContext sslContext = null;
-            if (this.config.getAuthenticationType() == DeviceClientConfig.AuthType.SAS_TOKEN)
+            if (this.config.getAuthenticationType() == DeviceClientConfig.AuthType.SAS_TOKEN || this.config.getAuthenticationType() == DeviceClientConfig.AuthType.CBS)
             {
                 sslContext = this.config.getSasTokenAuthentication().getSSLContext();
 
@@ -240,7 +240,7 @@ public class HttpsIotHubConnection
                                     Integer.toString(messageLockTimeoutSecs));
 
             SSLContext sslContext = null;
-            if (this.config.getAuthenticationType() == DeviceClientConfig.AuthType.SAS_TOKEN)
+            if (this.config.getAuthenticationType() == DeviceClientConfig.AuthType.SAS_TOKEN || this.config.getAuthenticationType() == DeviceClientConfig.AuthType.CBS)
             {
                 sslContext = this.config.getSasTokenAuthentication().getSSLContext();
 
@@ -367,7 +367,7 @@ public class HttpsIotHubConnection
             }
 
             SSLContext sslContext = null;
-            if (this.config.getAuthenticationType() == DeviceClientConfig.AuthType.SAS_TOKEN)
+            if (this.config.getAuthenticationType() == DeviceClientConfig.AuthType.SAS_TOKEN || this.config.getAuthenticationType() == DeviceClientConfig.AuthType.CBS)
             {
                 sslContext = this.config.getSasTokenAuthentication().getSSLContext();
 

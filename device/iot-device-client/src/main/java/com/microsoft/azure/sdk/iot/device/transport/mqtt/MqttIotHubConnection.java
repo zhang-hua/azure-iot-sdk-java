@@ -72,7 +72,7 @@ public class MqttIotHubConnection
             {
                 throw new IllegalArgumentException("hubName cannot be null or empty.");
             }
-            if (config.getAuthenticationType() == DeviceClientConfig.AuthType.SAS_TOKEN)
+            if (config.getAuthenticationType() == DeviceClientConfig.AuthType.SAS_TOKEN || config.getAuthenticationType() == DeviceClientConfig.AuthType.CBS)
             {
                 if (config.getIotHubConnectionString().getSharedAccessKey() == null || config.getIotHubConnectionString().getSharedAccessKey().isEmpty())
                 {
@@ -115,7 +115,7 @@ public class MqttIotHubConnection
             try
             {
                 SSLContext sslContext = null;
-                if (this.config.getAuthenticationType() == DeviceClientConfig.AuthType.SAS_TOKEN)
+                if (this.config.getAuthenticationType() == DeviceClientConfig.AuthType.SAS_TOKEN || this.config.getAuthenticationType() == DeviceClientConfig.AuthType.CBS)
                 {
                     this.iotHubUserPassword = this.config.getSasTokenAuthentication().getRenewedSasToken();
                     sslContext = this.config.getSasTokenAuthentication().getSSLContext();
